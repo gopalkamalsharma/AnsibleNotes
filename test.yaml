@@ -1,0 +1,51 @@
+---
+- hosts: all
+  become: true
+
+  tasks:
+    - name: Install security updates
+      ansible.builtin.apt:
+        name: "{{ item }}"
+        state: latest
+      loop:
+        - openssl
+        - openssh
+      ignore_errors: yes 
+    - name: Check if docker is installed
+      ansible.builtin.command: docker --version
+      register: output
+      ignore_errors: yes    
+    - ansible.builtin.debug:
+        var: output
+    - name: Install docker
+      ansible.builtin.apt:
+        name: docker.io
+        state: present
+      when: output.failed
+
+---
+- hosts: localhost
+  connection: local
+
+  tasks:
+  - name: Create EC2 instances
+    amazon.aws.ec2_instance:
+      name: "{{ item.name }}"
+      key_name: "abhi-aws-keypair"
+      instance_type: t2.micro
+      security_group: default
+      region: ap-south-1
+      aws_access_key: "{{ec2_access_key}}"  # From vault as defined
+      aws_secret_key: "{{ec2_secret_key}}"  # From vault as defined      
+      network:
+        assign_public_ip: true
+      image_id: "{{ item.image }}"
+      tags:
+        environment: "{{ item.name }}"
+    loop:
+      - { image: "ami-0e1d06225679bc1c5", name: "manage-node-1" } # Update AMI ID according 
+      - { image: "ami-0f58b397bc5c1f2e8", name: "manage-node-2" } # to your account
+      - { image: "ami-0f58b397bc5c1f2e8", name: "manage-node-3" }
+
+openssl rand -base64 2048 > vault.pass
+ansible-vault create group_vars/all/pass.yml --vault-password-file vault.pass
